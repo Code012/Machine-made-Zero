@@ -39,3 +39,15 @@
 
 # debug information files
 *.dwo
+
+# build files
+build/
+
+# visual studio files
+*.vs
+misc/.vs
+
+# clang-format
+.clang-format
+
+
