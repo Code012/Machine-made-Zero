@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <Xinput.h>
+#include <dsound.h>
 
 #include <cstdint>
 #include <stdint.h>
@@ -83,6 +84,9 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 }
 global_variable x_input_set_state* XInputSetState_ = XInputSetStateStub;
 #define XInputSetState XInputSetState_
+// NOTE(yakvi): DirectSoundCreate
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter);
+typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 internal void
 Win32LoadXInput()
@@ -111,6 +115,71 @@ Win32LoadXInput()
         XInputSetState = XInputSetStateStub;
         // TODO(joey): Diagnostic
     }
+}
+internal void 
+Win32InitDSound(HWND Window, s32 SamplesPerSecond, s32 BufferSize)
+{
+    // NOTE(joey): Load the library
+    HMODULE DSoundLibrary = LoadLibraryA("dsound.dll");
+
+    if (DSoundLibrary)
+    {
+        // NOTE(joey): Create a DirectSound object
+        direct_sound_create *DirectSoundCreate = (direct_sound_create*)GetProcAddress(DSoundLibrary, "DirectSoundCreate");
+
+        IDirectSound *DirectSound;
+        if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0))) {
+            WAVEFORMATEX WaveFormat = {};
+            WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+            WaveFormat.nChannels = 2;
+            WaveFormat.nSamplesPerSec = SamplesPerSecond;
+            WaveFormat.wBitsPerSample = 16;
+            WaveFormat.nBlockAlign = (WaveFormat.nChannels * WaveFormat.wBitsPerSample) / 8; // 4 bytes per frame under current settings left and right 2 bytes (stereo, 16bit)
+            WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec * WaveFormat.nBlockAlign; // bytes/sec
+
+
+            // NOTE(joey): set cooperative level
+            if (SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY)))
+            {
+                // NOTE(joey): "Create" a primary buffer
+                DSBUFFERDESC BufferDescription = {};
+                BufferDescription.dwSize = sizeof(BufferDescription);
+                BufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
+                IDirectSoundBuffer *PrimaryBuffer;
+                if (SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDescription, &PrimaryBuffer, 0)))
+                {
+                   if (SUCCEEDED(PrimaryBuffer->SetFormat(&WaveFormat))) 
+                    {
+                        // NOTE(joey): We have finally set hte format of the primary buffer!
+                        OutputDebugStringA("Primary buffer format was set. \n");
+
+                    }
+
+                }
+
+            }
+        
+            // NOTE(joey): "Create" a secondary buffer
+            DSBUFFERDESC BufferDescription = {};
+            BufferDescription.dwSize = sizeof(BufferDescription);
+            BufferDescription.dwBufferBytes = BufferSize;
+            BufferDescription.lpwfxFormat = &WaveFormat;
+
+            IDirectSoundBuffer *SecondaryBuffer;
+            if (SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDescription, &SecondaryBuffer, 0)))
+            {
+                // NOTE(joey): All good, secondary buffer works as intended
+                OutputDebugStringA("Secondary buffer create Successfully.\n");
+
+            }
+
+
+        }
+    }
+
+
+
+
 }
 
 internal win32_window_dimension
@@ -326,10 +395,13 @@ WinMain(HINSTANCE Instance,
             // get one device context and use it forever because we
             // are not sharing it with anyone.
             HDC DeviceContext    = GetDC(Window);
-            int dir              = 1;
             int YOffset          = 0;
             int XOffset          = 0;
-            int OscillateCounter = 300;
+            int SamplesPerSecond = 48000; //40kHz
+            int BytesPerSample = sizeof(s16) * 2; // 16-bit samples playing in 2 channels (stereo)
+            int SecondaryBufferSize = 2 * SamplesPerSecond * BytesPerSample; // Buffer size of 2 seconds
+            Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
+            Win32InitDSound(Window, SamplesPerSecond, SecondaryBufferSize);
 
             GlobalRunning = true;
             while (GlobalRunning) {
