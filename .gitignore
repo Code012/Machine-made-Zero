@@ -50,4 +50,4 @@ misc/.vs
 # clang-format
 .clang-format
 
-
+*.txt
