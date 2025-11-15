@@ -1,11 +1,23 @@
-#include <windows.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <Xinput.h>
-#include <dsound.h>
-// TODO(casey): Implement sine ourselves
-#include <math.h>
+/*
+    TODO(casey): THIS IS NOT A FINAL PLATFORM LAYER!!!
 
+    - Saved game locations
+    -Getting a handle to our own exe file
+    - Asset loading path
+    - Multithreading (launch a thread)
+    - Raw Input ( support for multiple keyboards)
+    - Sleep/timeBeginPeriod
+    - ClipCursor() (for multi-monitor support)
+    - Fullscreen support
+    - QueryCancelAutoplay
+    - WM_SETCURSOR (control cursor visibility)
+    - WM_ACTIVATEAPP (for when we are not the active applcations)
+    - Blit speed improvements (BitBlt)
+    - Hardware acceleration (OpenGL or Direct3D or both??)
+    - GetKeyboard Layout (for french keyboards, international WASD support)
+
+*/
+#include <stdint.h>
 
 ////////////////////////////////
 // Base Types
@@ -28,7 +40,18 @@ typedef double  f64;
 #define internal        static 
 #define local_persist   static
 #define global_variable static
+
 #define Pi32            3.14159265359f
+
+#include "handmade.cpp"
+
+#include <windows.h>
+#include <stdio.h>
+#include <Xinput.h>
+#include <dsound.h>
+// TODO(casey): Implement sine ourselves
+#include <math.h>
+
 
 #define KeyMessageWasDownBit (1 << 30)
 #define KeyMessageIsDownBit  (1 << 31)
@@ -206,23 +229,7 @@ Win32GetWindowDimension(HWND Window)
     return (Result);
 }
 
-internal void
-RenderWeirdGradient(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
-{
 
-    u8* Row = (u8*)Buffer->Memory;
-    for (int Y = 0; Y < Buffer->Height; ++Y) {
-        u32* Pixel = (u32*)Row;
-        for (int X = 0; X < Buffer->Width; ++X) {
-            u8 Red   = 0;
-            u8 Green = (u8)(Y + YOffset);
-            u8 Blue  = (u8)(X + XOffset);
-
-            *Pixel++ = Red << 16 | Green << 8 | Blue; // << 0
-        }
-        Row += Buffer->Pitch;
-    }
-}
 
 // serves to resize or initialise if it doesn't exist a Device Independent
 // Bitmap which is the name Windwos gies to the bitmaps it can display with GDI
@@ -554,7 +561,13 @@ WinMain(HINSTANCE Instance,
                 Vibration.wRightMotorSpeed = 60000;
                 XInputSetState(0, &Vibration);
 
-                RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
+
+                game_offscreen_buffer Buffer = {};
+                Buffer.Memory = GlobalBackBuffer.Memory;
+                Buffer.Width = GlobalBackBuffer.Width;
+                Buffer.Height = GlobalBackBuffer.Height;
+                Buffer.Pitch = GlobalBackBuffer.Pitch;
+                GameUpdateAndRender(&Buffer, XOffset, YOffset);
                 ++XOffset;
 
                 // NOTE(casey): DirectSound output test
@@ -578,13 +591,12 @@ WinMain(HINSTANCE Instance,
                     }
 
                     Win32FillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite);
-
-
-                    win32_window_dimension Dimension = Win32GetWindowDimension(Window);
-                    Win32DisplayBufferInWindow(
-                      &GlobalBackBuffer, DeviceContext, Dimension.Width, Dimension.Height);
-
                 } 
+
+
+                win32_window_dimension Dimension = Win32GetWindowDimension(Window);
+                Win32DisplayBufferInWindow(&GlobalBackBuffer, DeviceContext, Dimension.Width, Dimension.Height);
+
 
                 LARGE_INTEGER EndCounter;
                 QueryPerformanceCounter(&EndCounter);
@@ -597,9 +609,11 @@ WinMain(HINSTANCE Instance,
                 f64 FPS = (f64)PerfCountFrequency / (f64)CounterElapsed;
                 f64 MegaCyclesPerFrame = (f64)CyclesElapsed / (1000.0 * 1000.0);
 
+                #if 0
                 char Buffer[256];
                 sprintf(Buffer, "%.02fms/f, %.02ff/s, %.02fMc/f \n", MSPerFrame, FPS, MegaCyclesPerFrame);
                 OutputDebugStringA(Buffer);
+                #endif
 
                 LastCounter = EndCounter;
                 LastCycleCount = EndCycleCount;
