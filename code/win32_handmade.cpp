@@ -51,43 +51,13 @@ typedef double  f64;
 #include <stdio.h>
 #include <Xinput.h>
 #include <dsound.h>
-
+#include "win32_handmade.h"
 
 #define KeyMessageWasDownBit (1 << 30)
 #define KeyMessageIsDownBit  (1 << 31)
 
 ////////////////////////////////
 // Globals
-struct win32_offscreen_buffer
-{
-    // Note(casey): Pixels are always 32-bite wide,
-    // Memory Order  0x BB GG RR xx
-    // Little Endian 0x xx RR GG BB
-
-    BITMAPINFO Info;
-    void*      Memory;
-    int        Width;
-    int        Height;
-    int        Pitch;
-};
-struct win32_window_dimension
-{
-    int Width;
-    int Height;
-};
-struct win32_sound_output
-{
-    int SamplesPerSecond;
-    int BytesPerSample;
-    int SecondaryBufferSize;
-    u32 RunningSampleIndex;
-    int ToneHz;
-    int ToneVolume;
-    int WavePeriod;
-    f32 tSine;
-    int LatencySampleCount;
-};
-
 global_variable bool                   GlobalRunning;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
 global_variable IDirectSoundBuffer    *GlobalSecondaryBuffer;
@@ -151,6 +121,15 @@ Win32LoadXInput()
         XInputSetState = XInputSetStateStub;
         // TODO(casey): Diagnostic
     }
+}
+
+internal void
+Win32ProcessXInputDigitalButton(DWORD XInputButtonState,
+                                game_button_state *OldState, DWORD ButtonBit,
+                                game_button_state *NewState)
+{
+    NewState->EndedDown = ((XInputButtonState & ButtonBit) == ButtonBit);
+    NewState->HalfTransitionCount = (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
 }
 
 internal void 
@@ -379,20 +358,7 @@ Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
 
         case WM_SYSKEYDOWN:
         case WM_SYSKEYUP:
-        case WM_KEYDOWN: {
-            // (me): Don't have an xbox controller and dont want to rewrite controller logic with another api (at the moment) for dualshock
-            u32 VKCode = WParam;
-            if (VKCode == 'A')
-            {
-                ++SoundOutput.ToneHz;
-                SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
-            }
-            else if (VKCode == 'D')
-            {
-                --SoundOutput.ToneHz;
-                SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
-            }
-        }
+        case WM_KEYDOWN:
         case WM_KEYUP: {
             // Handle keyboard messaged here
             bool IsDown  = ((LParam & KeyMessageWasDownBit) == 0);
@@ -506,22 +472,17 @@ WinMain(HINSTANCE Instance,
                                       0,
                                       Instance,
                                       0);
-        if (Window) {
+        if (Window) 
+        {
             // Note(casey): Since we specified CS_OWNDC, we can just
             // get one device context and use it forever because we
             // are not sharing it with anyone.
             HDC DeviceContext    = GetDC(Window);
-            int YOffset          = 0;
-            int XOffset          = 0;
-            // NOTE(casey): Sound test constants
-            // win32_sound_output SoundOutput = {};
+            win32_sound_output SoundOutput = {};
             SoundOutput.SamplesPerSecond = 48000; //40kHz
             SoundOutput.BytesPerSample = sizeof(s16) * 2; // 16-bit samples playing in 2 channels (stereo)
             SoundOutput.SecondaryBufferSize = 2 * SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample; // Buffer size of 2 seconds
-            SoundOutput.ToneHz = 256;
             SoundOutput.RunningSampleIndex = 0;
-            SoundOutput.ToneVolume = 3000;
-            SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
             SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 15;
 
             // Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
@@ -530,11 +491,18 @@ WinMain(HINSTANCE Instance,
             GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
             s16 *Samples = (s16 *)VirtualAlloc(0, SoundOutput.SecondaryBufferSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-            GlobalRunning = true;
+            game_input Input[2] = {};
+            game_input* OldInput = &Input[0];
+            game_input* NewInput = &Input[1];
+
             LARGE_INTEGER LastCounter;
             QueryPerformanceCounter(&LastCounter);  // This isn't at the beginning of the loop because if getting back tot he top of the loop took some time (maybe the process switched or something else happened) we'd miss that time. This approach guarantees to never miss that time, because we have only one single place where we check the clock, and then measure the time on our last run ont he same spot.
             u64 LastCycleCount = __rdtsc();
-            while (GlobalRunning) {
+
+            GlobalRunning = true;
+            while (GlobalRunning) // frame loop 
+            { 
+
                 MSG Message;
                 while (PeekMessageA(&Message, 0, 0, 0, PM_REMOVE)) {
                     if (Message.message == WM_QUIT) {
@@ -545,14 +513,24 @@ WinMain(HINSTANCE Instance,
                 }
 
                 // TODO(casey): Should we poll this more frequently?
+                int MaxControllerCount = XUSER_MAX_COUNT;
+                if (MaxControllerCount > ArrayCount(NewInput->Controllers))
+                {
+                    MaxControllerCount = ArrayCount(NewInput->Controllers);
+                }
+
                 for (DWORD ControllerIndex = 0;
-                     ControllerIndex < XUSER_MAX_COUNT;
-                     ++ControllerIndex) {
+                     ControllerIndex < MaxControllerCount;
+                     ++ControllerIndex) 
+                {
+                    game_controller_input *OldController = &OldInput->Controllers[ControllerIndex];
+                    game_controller_input *NewController = &NewInput->Controllers[ControllerIndex];
+
                     XINPUT_STATE ControllerState = {};
-                    // ZeroMemory(&ControllerState, sizeof(XINPUT_STATE));
 
                     if (XInputGetState(ControllerIndex, &ControllerState) ==
-                        ERROR_SUCCESS) {
+                        ERROR_SUCCESS) 
+                    {
                         // Note(casey): the controller is plugged in
                         //  TODO(casey): See if ControllerState.dwPacketNumber
                         //  increments too rapidly
@@ -562,22 +540,59 @@ WinMain(HINSTANCE Instance,
                         bool Down          = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
                         bool Left          = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
                         bool Right         = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-                        bool Start         = Pad->wButtons & XINPUT_GAMEPAD_START;
-                        bool Back          = Pad->wButtons & XINPUT_GAMEPAD_BACK;
-                        bool LeftShoulder  = Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-                        bool RightShoulder = Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-                        bool AButton       = Pad->wButtons & XINPUT_GAMEPAD_A;
-                        bool BButton       = Pad->wButtons & XINPUT_GAMEPAD_B;
-                        bool XButton       = Pad->wButtons & XINPUT_GAMEPAD_X;
-                        bool YButton       = Pad->wButtons & XINPUT_GAMEPAD_Y;
-                        s16  StickX        = Pad->sThumbLX;
-                        s16  StickY        = Pad->sThumbLY;
-                        XOffset += StickX >> 12;
-                        YOffset += StickY >> 12;
-                        SoundOutput.ToneHz = 512 + (int)(256.0f * ((f32)StickY / 30000.0f));
-                        SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
 
-                    } else {
+                        // bool Start         = Pad->wButtons & XINPUT_GAMEPAD_START;
+                        // bool Back          = Pad->wButtons & XINPUT_GAMEPAD_BACK;
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->Down, XINPUT_GAMEPAD_A,
+                                                        &NewController->Down);
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->Right,XINPUT_GAMEPAD_B,
+                                                        &NewController->Right);
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->Left,XINPUT_GAMEPAD_X,
+                                                        &NewController->Left);
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->Up,XINPUT_GAMEPAD_Y,
+                                                        &NewController->Up);
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->LeftShoulder,XINPUT_GAMEPAD_LEFT_SHOULDER,
+                                                        &NewController->LeftShoulder);
+                        Win32ProcessXInputDigitalButton(Pad->wButtons,
+                                                        &OldController->RightShoulder,XINPUT_GAMEPAD_RIGHT_SHOULDER,
+                                                        &NewController->RightShoulder);
+                        // normalise analog stick values
+                        f32 X;
+                        if (Pad->sThumbLX < 0)
+                        {
+                            X = (f32)Pad->sThumbLX / 32768.0f;
+                        }
+                        else
+                        {
+                            X = (f32)Pad->sThumbLX / 32767.0f;
+                        }
+
+                        f32 Y;
+                        if (Pad->sThumbLY < 0)
+                        {
+                            Y = (f32)Pad->sThumbLY / 32768.0f;
+                        }
+                        else
+                        {
+                            Y = (f32)Pad->sThumbLY / 32767.0f;
+                        }
+                        NewController->StartX = OldController->EndX;
+                        NewController->StartY = OldController->EndY;
+
+                        // TODO(casey): Min/Max macros!!!
+                        NewController->MinX = NewController->MaxX = NewController->EndX = X;
+                        NewController->MinY = NewController->MaxY = NewController->EndY = Y;
+
+                        NewController->IsAnalog = true;
+
+                    } 
+                    else 
+                    {
 
                         // Note(casey): the controller is not available, can show
                         // user that it is
@@ -630,8 +645,7 @@ WinMain(HINSTANCE Instance,
                 Buffer.Height = GlobalBackBuffer.Height;
                 Buffer.Pitch = GlobalBackBuffer.Pitch;
 
-                GameUpdateAndRender(&Buffer, XOffset, YOffset, &SoundBuffer, SoundOutput.ToneHz);
-                ++XOffset;
+                GameUpdateAndRender(NewInput, &Buffer, &SoundBuffer);
 
                 // NOTE(casey): DirectSound output test
                 if(SoundIsValid)
@@ -663,12 +677,20 @@ WinMain(HINSTANCE Instance,
 
                 LastCounter = EndCounter;
                 LastCycleCount = EndCycleCount;
+
+                game_input *Temp = NewInput;
+                NewInput = OldInput;
+                OldInput = Temp;
             } 
-        } else {
+        } 
+        else 
+        {
             // Window creation failed!
             // TODO(casey): Logging
         }
-    } else {
+    } 
+    else 
+    {
         // Window Class Registration failed
         // TODO(casey): Logging
     }
