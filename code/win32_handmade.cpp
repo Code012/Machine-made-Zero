@@ -61,7 +61,6 @@ typedef double  f64;
 global_variable bool                   GlobalRunning;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
 global_variable IDirectSoundBuffer    *GlobalSecondaryBuffer;
-global_variable win32_sound_output     SoundOutput;
 
 // NOTE(me):
 // 1. Defined a function prototype
@@ -314,7 +313,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
 
     Buffer->Width     = Width;
     Buffer->Height    = Height;
-    int BytesPerPixel = 4; // 3 for rgb, 1 to ensure alignment
+    WORD BytesPerPixel = 4; // 3 for rgb, 1 to ensure alignment
     Buffer->Pitch     = Buffer->Width * BytesPerPixel;
 
     // Note(casey): When the biHeight field is negative, this is the clue
@@ -452,7 +451,7 @@ Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
             // Handle keyboard messaged here
             bool IsDown  = ((LParam & KeyMessageWasDownBit) == 0);
             bool WasDown = ((LParam & KeyMessageIsDownBit) != 0);
-            u32  VKCode  = WParam;
+            u32  VKCode  = (u32)WParam;
             if (IsDown != WasDown) {
 
                 if (VKCode == 'W') {
@@ -588,10 +587,10 @@ WinMain(HINSTANCE Instance,
 
             game_memory GameMemory = {};
             GameMemory.PermanentStorageSize = Megabytes(64);
-            GameMemory.TransientStorageSize = Gigabytes(2);
+            GameMemory.TransientStorageSize = Gigabytes(1);
             u64 TotalStorageSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
 
-            GameMemory.PermanentStorage = VirtualAlloc(BaseAddress, TotalStorageSize,
+            GameMemory.PermanentStorage = VirtualAlloc(BaseAddress, (size_t)TotalStorageSize,
                                                         MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
 
@@ -622,7 +621,7 @@ WinMain(HINSTANCE Instance,
                     }
 
                     // TODO(casey): Should we poll this more frequently?
-                    int MaxControllerCount = XUSER_MAX_COUNT;
+                    DWORD MaxControllerCount = XUSER_MAX_COUNT;
                     if (MaxControllerCount > ArrayCount(NewInput->Controllers))
                     {
                         MaxControllerCount = ArrayCount(NewInput->Controllers);
