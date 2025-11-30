@@ -230,7 +230,7 @@ internal f32
 Win32ProcessXInputStickValue(SHORT Value, SHORT DeadZoneThreshold)
 {
     f32 Result = 0;
-
+    
     if (Value < -DeadZoneThreshold)
     {
         Result = (f32)((Value + DeadZoneThreshold) / (32768.0f - DeadZoneThreshold));
