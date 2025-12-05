@@ -27,6 +27,7 @@ set win32_link=%win32_link% -opt:ref				&:: Remove unused functions
 :: WIN32 PLATFORM LIBRARIES
 set win32_libs=				user32.lib
 set win32_libs=%win32_libs% Gdi32.lib
+set win32_libs=%win32_libs% Winmm.lib
 set win32_lins=%win32_libs% Xinput.lib 
 :: CROSS_PLATFORM DEFINES
 set defines=	      -DHANDMADE_INTERNAL=1
