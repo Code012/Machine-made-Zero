@@ -338,6 +338,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
     Buffer->Width     = Width;
     Buffer->Height    = Height;
     WORD BytesPerPixel = 4; // 3 for rgb, 1 to ensure alignment
+    Buffer->BytesPerPixel = BytesPerPixel;
     Buffer->Pitch     = Buffer->Width * BytesPerPixel;
 
     // Note(casey): When the biHeight field is negative, this is the clue
@@ -637,6 +638,47 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
     return (Result);
 }
 
+internal void
+Win32DebugDrawVertical(win32_offscreen_buffer *Backbuffer,
+                        int X, int Top, int Bottom, u32 Colour)
+{
+    u8 *Pixel = (u8 *)Backbuffer->Memory + 
+                (Top * Backbuffer->Pitch) + 
+                (X * Backbuffer->BytesPerPixel);
+
+    for (int Y = Top;
+        Y < Bottom;
+        ++Y)
+    {
+        *(u32 *)Pixel = Colour;
+        Pixel += Backbuffer->Pitch;
+    }
+}
+
+internal void
+Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer,
+                        int DebugLastPlayCursorCount, DWORD *DebugLastPlayCursor,
+                        win32_sound_output *SoundOutput, f32 TargetSecondsPerFrame)
+{
+    int PadX = 16;
+    int PadY = 16;
+
+    int Top = PadY;
+    int Bottom = Backbuffer->Height - PadY;
+
+    f32 C = (f32)(Backbuffer->Width - 2 * PadX) / (f32)SoundOutput->SecondaryBufferSize;
+    for (int PlayCursorIndex = 0;
+            PlayCursorIndex < DebugLastPlayCursorCount;
+            ++PlayCursorIndex)
+    {
+        DWORD ThisPlayCursor = DebugLastPlayCursor[PlayCursorIndex];
+        Assert(ThisPlayCursor < SoundOutput->SecondaryBufferSize);
+        f32 XReal = C * (f32)ThisPlayCursor;    // C is scale factor to map from sound buffer to display buffer
+        int X = PadX + (int) XReal;
+        Win32DebugDrawVertical(Backbuffer, X, Top, Bottom, 0xFFFFFFFF);
+    }
+}
+
 
 int CALLBACK
 WinMain(HINSTANCE Instance,
@@ -661,8 +703,8 @@ WinMain(HINSTANCE Instance,
     WindowClass.lpszClassName = "HandmadeHeroClass";
 
     // TODO(casey): How do we reliably query this on Windows?
-    int MonitorRefreshHz = 60;
-    int GameUpdateHz = MonitorRefreshHz / 2; // game refresh rate can be a fraction of monitor's refresh rate and still sync properly
+    #define MonitorRefreshHz 60
+    #define GameUpdateHz (MonitorRefreshHz / 2) // game refresh rate can be a fraction of monitor's refresh rate and still sync properly
     f32 TargetSecondsPerFrame = 1.0f / (f32)GameUpdateHz; // for frame timing
 
     if (RegisterClassA(&WindowClass)) {
@@ -720,6 +762,8 @@ WinMain(HINSTANCE Instance,
                 game_input Input[2] = {};
                 game_input* OldInput = &Input[0];
                 game_input* NewInput = &Input[1];
+                int DebugLastPlayCursorIndex = 0;
+                DWORD DebugLastPlayCursor[GameUpdateHz] = {};
 
                 LARGE_INTEGER LastCounter = Win32GetWallClock();  // This isn't at the beginning of the loop because if getting back tot he top of the loop took some time (maybe the process switched or something else happened) we'd miss that time. This approach guarantees to never miss that time, because we have only one single place where we check the clock, and then measure the time on our last run ont he same spot.
                 u64 LastCycleCount = __rdtsc();
@@ -915,19 +959,28 @@ WinMain(HINSTANCE Instance,
                     if (SecondsElapsedForFrame < TargetSecondsPerFrame)
                     {
                         // sleep until frame time ends, then display frame after (displaybufferinwindow)
-                        while (SecondsElapsedForFrame < TargetSecondsPerFrame)
+                        if (SleepIsGranular)
                         {
-                            if (SleepIsGranular)
-                            {
+                            DWORD SleepMS = (DWORD)(1000.0f * (TargetSecondsPerFrame - SecondsElapsedForFrame));
 
-                                DWORD SleepMS = (DWORD)(1000.0f * (TargetSecondsPerFrame - SecondsElapsedForFrame));
-                                if (SleepMS > 0)
-                                {
-                                    Sleep(SleepMS);
-                                }
-                                SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
+                            if (SleepMS > 0)
+                            {
+                                Sleep(SleepMS);
                             }
                         }
+
+                        f32 TestSecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
+                        if(TestSecondsElapsedForFrame < TargetSecondsPerFrame)
+                        {
+                            // TODO(casey): LOG MISSED SLEEP HERE
+                        }
+
+                        // spinning last fre microseconds
+                        while (SecondsElapsedForFrame < TargetSecondsPerFrame)
+                        {
+                            SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
+                        }
+                        
                     }
                     else
                     {
@@ -935,16 +988,36 @@ WinMain(HINSTANCE Instance,
                         // TODO(casey): Logging
                     }
 
+                    LARGE_INTEGER EndCounter = Win32GetWallClock();
+                    f32 MSPerFrame = 1000.0f * Win32GetSecondsElapsed(LastCounter, EndCounter);
+                    LastCounter = EndCounter;
+
                     win32_window_dimension Dimension = Win32GetWindowDimension(Window);
+                    #if HANDMADE_INTERNAL
+                    Win32DebugSyncDisplay(&GlobalBackBuffer, ArrayCount(DebugLastPlayCursor), DebugLastPlayCursor, &SoundOutput, TargetSecondsPerFrame);
+                    #endif
                     Win32DisplayBufferInWindow(&GlobalBackBuffer, DeviceContext, Dimension.Width, Dimension.Height);
+
+                    #if HANDMADE_INTERNAL
+                    // NOTE(casey): This is debug code
+                    {
+                        DWORD DebugPlayCursor;
+                        DWORD DebugWriteCursor;
+                        GlobalSecondaryBuffer->GetCurrentPosition(&DebugPlayCursor, &DebugWriteCursor);
+
+                        Assert(DebugLastPlayCursorIndex < ArrayCount(DebugLastPlayCursor));
+                        DebugLastPlayCursor[DebugLastPlayCursorIndex++] = DebugPlayCursor;
+                        if (DebugLastPlayCursorIndex == ArrayCount(DebugLastPlayCursor))
+                        {
+                            DebugLastPlayCursorIndex = 0;
+                        }
+                    }
+                    #endif
 
                     game_input *Temp = NewInput;
                     NewInput = OldInput;
                     OldInput = Temp;
 
-                    LARGE_INTEGER EndCounter = Win32GetWallClock();
-                    f32 MSPerFrame = 1000.0f * Win32GetSecondsElapsed(LastCounter, EndCounter);
-                    LastCounter = EndCounter;
 
                     u64 EndCycleCount = __rdtsc();
                     s64 CyclesElapsed = EndCycleCount - LastCycleCount;
