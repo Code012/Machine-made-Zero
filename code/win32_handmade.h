@@ -26,7 +26,20 @@ struct win32_sound_output
     int BytesPerSample;
     DWORD SecondaryBufferSize;
     u32 RunningSampleIndex;
-    int LatencySampleCount;
+    DWORD SafetyBytes;
+    // TODO(casey): Math gets simpler if we add a "bytes per second" field
+};
+
+struct win32_debug_time_marker
+{
+    DWORD OutputPlayCursor;
+    DWORD OutputWriteCursor;
+    DWORD OutputLocation; 
+    DWORD OutputByteCount;
+    DWORD ExpectedFlipPlayCursor;
+
+    DWORD FlipPlayCursor;
+    DWORD FlipWriteCursor;
 };
 
 #define WIN32_HANDMADE_H

@@ -131,7 +131,8 @@ internal b32 DEBUGPlatformWriteEntireFile(char *Filename, u32 MemorySize, void *
 #endif
 
 // NOTE(casey): Services that the game provides to the platform layer
-internal void GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer, game_sound_output_buffer *SoundBuffer);
+internal void GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer);
+internal void GameGetSoundSample(game_memory *Memory, game_sound_output_buffer *SoundBuffer);
 
 struct game_state
 {
