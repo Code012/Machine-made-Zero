@@ -17,40 +17,13 @@
     - GetKeyboard Layout (for french keyboards, international WASD support)
 
 */
-// TODO(casey): Implement sine ourselves
-#include <math.h>
-#include <stdint.h>
-
-////////////////////////////////
-// Base Types
-
-typedef uint8_t  u8; 
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-typedef int8_t  s8; 
-typedef int16_t s16;
-typedef int32_t s32;
-typedef int64_t s64;
-typedef s32     b32; 
-typedef float   f32;
-typedef double  f64;
-
-////////////////////////////////
-// Defines
-#define internal        static 
-#define local_persist   static
-#define global_variable static
-
-#define Pi32            3.14159265359f
-
-#include "handmade.cpp"
+#include "handmade.h"
 
 #include <windows.h>
 #include <stdio.h>
 #include <Xinput.h>
 #include <dsound.h>
+
 #include "win32_handmade.h"
 
 #define KeyMessageWasDownBit (1 << 30)
@@ -93,16 +66,14 @@ global_variable x_input_set_state* XInputSetState_ = XInputSetStateStub;
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-internal void
-DEBUGPlatformFreeFileMemory(void *Memory)
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
 {
     if (Memory)
     {
         VirtualFree(Memory, 0, MEM_RELEASE);
     }
 }
-internal debug_read_file_result
-DEBUGPlatformReadEntireFile(char *Filename)
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 {
     debug_read_file_result Result = {};
 
@@ -153,8 +124,7 @@ DEBUGPlatformReadEntireFile(char *Filename)
 
     return Result;
 }
-internal b32
-DEBUGPlatformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory)  // blocking write, not for final game
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)  // blocking write, not for final game
 {
     b32 Result = false;
     
@@ -184,6 +154,54 @@ DEBUGPlatformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory)  // b
 }
 ////////////////////////////////
 // Helpers
+
+struct win32_game_code
+{
+    HMODULE GameCodeDLL;
+    // Note(sb): Function pointers to exported functions from handmade.dll
+    game_update_and_render *UpdateAndRender;
+    game_get_sound_samples *GetSoundSamples;
+
+    b32 isValid;
+};
+internal win32_game_code 
+Win32LoadGameCode()
+{
+    win32_game_code Result = {};
+
+    CopyFile("build/handmade.dll", "build/handmade_temp.dll", FALSE);
+    Result.GameCodeDLL = LoadLibraryA("build/handmade_temp.dll");
+    if (Result.GameCodeDLL)
+    {
+        Result.UpdateAndRender = (game_update_and_render *)GetProcAddress(Result.GameCodeDLL, "GameUpdateAndRender");
+        Result.GetSoundSamples = (game_get_sound_samples *)GetProcAddress(Result.GameCodeDLL, "GameGetSoundSamples");
+
+        Result.isValid = (Result.UpdateAndRender && Result.GetSoundSamples);
+    }
+
+    if (!Result.isValid)
+    {
+        Result.UpdateAndRender = GameUpdateAndRenderStub;   // set to stub incase not found
+        Result.GetSoundSamples = GameGetSoundSamplesStub;
+    }
+
+    return (Result);
+}
+
+internal void
+Win32UnloadGameCode(win32_game_code *GameCode)
+{
+    if (GameCode->GameCodeDLL)
+    {
+        FreeLibrary(GameCode->GameCodeDLL);
+        GameCode->GameCodeDLL = 0;
+    }
+
+    GameCode->isValid = false;
+    GameCode->UpdateAndRender = GameUpdateAndRenderStub;
+    GameCode->GetSoundSamples = GameGetSoundSamplesStub;
+}
+
 internal void
 Win32LoadXInput()
 {
@@ -765,6 +783,8 @@ WinMain(HINSTANCE Instance,
         LPSTR     CommandLine,
         int       ShowCode)
 {
+
+
     LARGE_INTEGER PerfCountFrequencyResult;
     QueryPerformanceFrequency(&PerfCountFrequencyResult);
     GlobalPerfCountFrequency = PerfCountFrequencyResult.QuadPart;
@@ -830,6 +850,9 @@ WinMain(HINSTANCE Instance,
             game_memory GameMemory = {};
             GameMemory.PermanentStorageSize = Megabytes(64);
             GameMemory.TransientStorageSize = Gigabytes(1);
+            GameMemory.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory;
+            GameMemory.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile;
+            GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
             u64 TotalStorageSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
 
             GameMemory.PermanentStorage = VirtualAlloc(BaseAddress, (size_t)TotalStorageSize,
@@ -851,10 +874,20 @@ WinMain(HINSTANCE Instance,
                 LARGE_INTEGER LastCounter = Win32GetWallClock();  // This isn't at the beginning of the loop because if getting back tot he top of the loop took some time (maybe the process switched or something else happened) we'd miss that time. This approach guarantees to never miss that time, because we have only one single place where we check the clock, and then measure the time on our last run ont he same spot.
                 LARGE_INTEGER FlipWallClock = Win32GetWallClock();
                 u64 LastCycleCount = __rdtsc();
+                
+                win32_game_code Game = Win32LoadGameCode();
+                u32 LoadCounter = 0;
 
                 GlobalRunning = true;
                 while (GlobalRunning) // frame loop 
                 { 
+                    if (LoadCounter++ > 120)
+                    {
+                        Win32UnloadGameCode(&Game);
+                        Game = Win32LoadGameCode();
+                        LoadCounter = 0;
+                    }
+
                     game_controller_input *OldKeyboardController = GetController(OldInput, 0);
                     game_controller_input *NewKeyboardController = GetController(NewInput, 0);
                     *NewKeyboardController = {};
@@ -993,7 +1026,7 @@ WinMain(HINSTANCE Instance,
                         // ByteToLock: point from where we should start writing
                         // TargetCursor: where we're writing until (will move depending on hardware's latency. Low latency path we can write up from the frame flip so we offset TargetCursor until the next frame's boundary so that audio will always go out with the image. High latency path, then we won't wait until the framw flip, and the Targetcursor can be whatever our WriteCursor would be after one frame)
                         // BytesToWrite: difference between ByteToLock and TargetCursor ( considering circular buffer wrap )
-                        GameUpdateAndRender(&GameMemory, NewInput, &Buffer);
+                        Game.UpdateAndRender(&GameMemory, NewInput, &Buffer);
 
                         LARGE_INTEGER AudioWallClock = Win32GetWallClock();
                         f32 FromBeginToAudioSeconds = Win32GetSecondsElapsed(FlipWallClock, AudioWallClock);
@@ -1078,7 +1111,7 @@ WinMain(HINSTANCE Instance,
                             SoundBuffer.SampleCount = BytesToWrite / SoundOutput.BytesPerSample;
                             SoundBuffer.Samples = Samples;
 
-                            GameGetSoundSample(&GameMemory, &SoundBuffer);
+                            Game.GetSoundSamples(&GameMemory, &SoundBuffer);
                             Win32FillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite, &SoundBuffer);
 
 #if HANDMADE_INTERNAL
@@ -1206,6 +1239,7 @@ WinMain(HINSTANCE Instance,
 #endif
 
                     } // if (!GlobalPause)
+                    
                 } // while (GlobalRunning) 
             } // if (Samples && GameMemory.PermanentStorage && GameMemory.TransientStorage)
             else

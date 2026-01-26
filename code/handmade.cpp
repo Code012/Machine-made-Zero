@@ -21,7 +21,7 @@ RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
 }
 
 internal void
-GameOutputSound(game_sound_output_buffer *SoundBuffer, int ToneHz)
+GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, int ToneHz)
 {
 	local_persist f32 tSine;
 	s16 ToneVolume = 3000;
@@ -32,42 +32,46 @@ GameOutputSound(game_sound_output_buffer *SoundBuffer, int ToneHz)
          SampleIndex < SoundBuffer->SampleCount;
          ++SampleIndex)
     {
-        f32 SineValue = sinf(tSine);
+        f32 SineValue = sinf(GameState->tSine);
         s16 SampleValue = (s16)(SineValue * ToneVolume);
         
         *SampleOut++ = SampleValue;
         *SampleOut++ = SampleValue;
         
-        tSine += (2.0f * Pi32 * 1.0f) / (f32)WavePeriod;
-        if (tSine > 2.0f * Pi32)
+        GameState->tSine += (2.0f * Pi32 * 1.0f) / (f32)WavePeriod;
+        if (GameState->tSine > 2.0f * Pi32)
         {
-            tSine -= 2.0f * Pi32;
+            GameState->tSine -= 2.0f * Pi32;
         }
     }
 }
 
-internal void
-GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer)
+#if defined __cplusplus
+extern "C"
+#endif
+GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
     Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons))); // so we dont forget to update Buttons length when adding or removing new buttons
-
-    debug_read_file_result FileData = DEBUGPlatformReadEntireFile(__FILE__);
-    if (FileData.Contents)
-    {
-        DEBUGPlatformWriteEntireFile("test.out", FileData.ContentsSize, FileData.Contents);
-        DEBUGPlatformFreeFileMemory(FileData.Contents);
-        FileData.Contents = nullptr;
-    }
-
     Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
+
     game_state *GameState = (game_state *)Memory->PermanentStorage;
 
     if (!Memory->IsInitialised)
     {
+        debug_read_file_result FileData = Memory->DEBUGPlatformReadEntireFile(__FILE__); 
+        if (FileData.Contents)
+        {
+            Memory->DEBUGPlatformWriteEntireFile("test.out", FileData.ContentsSize, FileData.Contents);
+            Memory->DEBUGPlatformFreeFileMemory(FileData.Contents);
+            FileData.Contents = nullptr;
+        }
 
-        GameState->XOffset = 0; 
-        GameState->YOffset = 0;
-        GameState->ToneHz = 256;
+        // GameState->XOffset = 0; 
+        // GameState->YOffset = 0;
+        GameState->ToneHz = 512;
+        GameState->tSine = 0.0f;
+
+        // TODO(casey): This may be more appropriate to do in the platform layer
         Memory->IsInitialised = true;
     }
 
@@ -113,9 +117,11 @@ GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffe
     }
 	RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);
 }
-internal void
-GameGetSoundSample(game_memory* Memory, game_sound_output_buffer *SoundBuffer)
+#if defined __cplusplus
+extern "C"
+#endif
+GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 {
     game_state *GameState = (game_state *)Memory->PermanentStorage;
-    GameOutputSound(SoundBuffer, GameState->ToneHz);
+    GameOutputSound(GameState, SoundBuffer, GameState->ToneHz);
 }

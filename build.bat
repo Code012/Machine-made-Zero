@@ -19,20 +19,24 @@ set compiler=%compiler%     -wd4189 &:: Local variable not referenced
 set compiler=%compiler%     -wd4701 &:: Potentially uninitialized local variable 'name' used
 set compiler=%compiler%		
 :: DEBUG VARIABLES
-set debug=		  -FC &:: Produce the full path of the source code file
-set debug=%debug% -Z7 &:: Produce debug information
-:: WIN32 LINKER SWITCHES
-set win32_link=				-subsystem:windows,5.2  &:: subsystem, 5.1 for x86
-set win32_link=%win32_link% -opt:ref				&:: Remove unused functions
+set debug=		  			-FC &:: Produce the full path of the source code file
+set debug=%debug% 			-Zi &:: Produce debug information (seperate PDB file, Use Z7 for embedding debug info into .obj file)
+:: COMMON LINKER SWITCHES
+set link=					-opt:ref				&:: Remove unused functions
+set link=%win32_link% 		-incremental:no			&:: Perform full link each time
+:: DLL LINKER SWITCHES
+set dll_link=				/EXPORT:GameUpdateAndRender
+set dll_link=%dll_link%		/EXPORT:GameGetSoundSamples
 :: WIN32 PLATFORM LIBRARIES
 set win32_libs=				user32.lib
 set win32_libs=%win32_libs% Gdi32.lib
 set win32_libs=%win32_libs% Winmm.lib
 set win32_lins=%win32_libs% Xinput.lib 
 :: CROSS_PLATFORM DEFINES
-set defines=	      -DHANDMADE_INTERNAL=1
-set defines=%defines% -DHANDMADE_SLOW=1
-:: important to specify drive, or it can't find file
+set defines=	      		-DHANDMADE_INTERNAL=1
+set defines=%defines% 		-DHANDMADE_SLOW=1
+
 :: No optimisations (slow)L -Od; all optimisations (fast): -O2
-cl -Od %compiler% -DHANDMADE_WIN32=1 %defines% %debug% -Fmwin32_handmade.map %code_path%win32_handmade.cpp %win32_libs% /link %win32_link%
+cl -Od %compiler% %defines% %debug% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
+cl -Od %compiler% -DHANDMADE_WIN32=1 %defines% %debug% -Fmwin32_handmade.map %code_path%win32_handmade.cpp %win32_libs% /link %link% -subsystem:windows,5.2 	&:: Windows platform code (win32_handmade.exe)
 popd
