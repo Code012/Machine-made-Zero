@@ -155,22 +155,36 @@ DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)  // blocking writ
 ////////////////////////////////
 // Helpers
 
-struct win32_game_code
+internal FILETIME
+Win32GetLastWriteTime(char *Filename)
 {
-    HMODULE GameCodeDLL;
-    // Note(sb): Function pointers to exported functions from handmade.dll
-    game_update_and_render *UpdateAndRender;
-    game_get_sound_samples *GetSoundSamples;
+    FILETIME LastWriteTime = {};
 
-    b32 isValid;
-};
+    WIN32_FIND_DATA FindData;
+    HANDLE FileHandle =  FindFirstFileA(Filename, &FindData);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+        LastWriteTime = FindData.ftLastWriteTime;
+        FindClose(FileHandle);
+    }
+
+    return LastWriteTime;
+}
+
 internal win32_game_code 
-Win32LoadGameCode()
+Win32LoadGameCode(char *SourceDLLName, char *TempDLLName)
 {
     win32_game_code Result = {};
 
-    CopyFile("build/handmade.dll", "build/handmade_temp.dll", FALSE);
-    Result.GameCodeDLL = LoadLibraryA("build/handmade_temp.dll");
+    // TODO(casey): Need to get the proper path here!
+    // TODO(casey): Automatic determination of when updates are necessary.
+
+
+    Result.DLLLastWriteTime = Win32GetLastWriteTime(SourceDLLName);
+
+    Sleep(30);
+    CopyFile(SourceDLLName, TempDLLName, FALSE);
+    Result.GameCodeDLL = LoadLibraryA(TempDLLName); 
     if (Result.GameCodeDLL)
     {
         Result.UpdateAndRender = (game_update_and_render *)GetProcAddress(Result.GameCodeDLL, "GameUpdateAndRender");
@@ -191,7 +205,7 @@ Win32LoadGameCode()
 internal void
 Win32UnloadGameCode(win32_game_code *GameCode)
 {
-    if (GameCode->GameCodeDLL)
+    if (GameCode->GameCodeDLL) 
     {
         FreeLibrary(GameCode->GameCodeDLL);
         GameCode->GameCodeDLL = 0;
@@ -776,6 +790,27 @@ Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer,
     }
 }
 
+void 
+CatStrings(size_t SourceACount, char *SourceA,
+           size_t SourceBCount, char *SourceB,
+           size_t DestCount, char *Dest)
+{
+    for (int Index = 0;
+         Index < SourceACount;
+         ++Index)
+    {
+        *Dest++ = *SourceA++;
+    }
+
+    for (int Index = 0;
+         Index < SourceBCount;
+         ++Index)
+    {
+        *Dest++ = *SourceB++;
+    }
+    *Dest++ = 0;
+}
+
 
 int CALLBACK
 WinMain(HINSTANCE Instance,
@@ -783,7 +818,32 @@ WinMain(HINSTANCE Instance,
         LPSTR     CommandLine,
         int       ShowCode)
 {
+    // Note(casey): Never use MAX_PATH in code that is user-facing, because it
+    // can be dangerous and lead to bad results. Paths can be larger than MAX_PATH.
+    char EXEFileName[MAX_PATH];
+    DWORD SizeOfFilename = GetModuleFileName(0, EXEFileName, sizeof(EXEFileName));
+    char *OnePastLastSlash = EXEFileName;
+    for (char *Scan = EXEFileName; 
+         *Scan;
+         ++Scan)
+    {   
+        if (*Scan == '\\')
+        {
+            OnePastLastSlash = Scan + 1;
+        }
+    }
 
+    char SourceGameCodeDLLFilename[] = "handmade.dll";
+    char SourceGameCodeDLLFullPath[MAX_PATH];
+    CatStrings(OnePastLastSlash - EXEFileName, EXEFileName,
+               sizeof(SourceGameCodeDLLFilename) - 1, SourceGameCodeDLLFilename,
+               sizeof(SourceGameCodeDLLFullPath), SourceGameCodeDLLFullPath);
+
+    char TempGameCodeDLLFilename[] = "handmade_temp.dll";
+    char TempGameCodeDLLFullPath[MAX_PATH];
+    CatStrings(OnePastLastSlash - EXEFileName, EXEFileName,
+               sizeof(TempGameCodeDLLFilename) - 1, TempGameCodeDLLFilename,
+               sizeof(TempGameCodeDLLFullPath), TempGameCodeDLLFullPath);
 
     LARGE_INTEGER PerfCountFrequencyResult;
     QueryPerformanceFrequency(&PerfCountFrequencyResult);
@@ -875,16 +935,19 @@ WinMain(HINSTANCE Instance,
                 LARGE_INTEGER FlipWallClock = Win32GetWallClock();
                 u64 LastCycleCount = __rdtsc();
                 
-                win32_game_code Game = Win32LoadGameCode();
+                win32_game_code Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, 
+                                                         TempGameCodeDLLFullPath);
                 u32 LoadCounter = 0;
 
                 GlobalRunning = true;
                 while (GlobalRunning) // frame loop 
                 { 
-                    if (LoadCounter++ > 120)
+                    FILETIME NewDLLWriteTime = Win32GetLastWriteTime(SourceGameCodeDLLFullPath);
+                    if ( CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime) != 0)
                     {
                         Win32UnloadGameCode(&Game);
-                        Game = Win32LoadGameCode();
+                        Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, 
+                                                 TempGameCodeDLLFullPath);
                         LoadCounter = 0;
                     }
 
@@ -1023,9 +1086,6 @@ WinMain(HINSTANCE Instance,
                         Buffer.Height = GlobalBackBuffer.Height;
                         Buffer.Pitch = GlobalBackBuffer.Pitch;
 
-                        // ByteToLock: point from where we should start writing
-                        // TargetCursor: where we're writing until (will move depending on hardware's latency. Low latency path we can write up from the frame flip so we offset TargetCursor until the next frame's boundary so that audio will always go out with the image. High latency path, then we won't wait until the framw flip, and the Targetcursor can be whatever our WriteCursor would be after one frame)
-                        // BytesToWrite: difference between ByteToLock and TargetCursor ( considering circular buffer wrap )
                         Game.UpdateAndRender(&GameMemory, NewInput, &Buffer);
 
                         LARGE_INTEGER AudioWallClock = Win32GetWallClock();
@@ -1060,12 +1120,16 @@ WinMain(HINSTANCE Instance,
                                worth of audio plus the safety margin's worth
                                of guard samples.
                             */
+
                             if (!SoundIsValid)
                             {
                                 SoundOutput.RunningSampleIndex = WriteCursor / SoundOutput.BytesPerSample;
                                 SoundIsValid = true;
                             }
 
+                            // ByteToLock: point from where we should start writing
+                            // TargetCursor: where we're writing until (will move depending on hardware's latency. Low latency path we can write up from the frame flip so we offset TargetCursor until the next frame's boundary so that audio will always go out with the image. High latency path, then we won't wait until the framw flip, and the Targetcursor can be whatever our WriteCursor would be after one frame)
+                            // BytesToWrite: difference between ByteToLock and TargetCursor ( considering circular buffer wrap )
                             DWORD ByteToLock = ((SoundOutput.RunningSampleIndex * SoundOutput.BytesPerSample)
                                                     % SoundOutput.SecondaryBufferSize);
 

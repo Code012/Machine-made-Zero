@@ -91,12 +91,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             // NOTE(casey): Use digital movement tuning
             if (Controller->MoveLeft.EndedDown)
             {
-                GameState->XOffset -= 1;
+                GameState->XOffset -= 10;
             }
 
             if (Controller->MoveRight.EndedDown)
             {
-                GameState->XOffset += 1;
+                GameState->XOffset += 10;
             }
 
             if (Controller->MoveUp.EndedDown)
@@ -112,7 +112,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         if (Controller->ActionDown.EndedDown)
         {
-            GameState->YOffset += 1;
+            GameState->YOffset += 10;
         }
     }
 	RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);

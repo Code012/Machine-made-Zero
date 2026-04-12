@@ -42,5 +42,17 @@ struct win32_debug_time_marker
     DWORD FlipWriteCursor;
 };
 
+
+struct win32_game_code
+{
+    HMODULE GameCodeDLL;
+    FILETIME DLLLastWriteTime;
+    // Note(sb): Function pointers to exported functions from handmade.dll
+    game_update_and_render *UpdateAndRender;
+    game_get_sound_samples *GetSoundSamples;
+
+    b32 isValid;
+};
+
 #define WIN32_HANDMADE_H
 #endif

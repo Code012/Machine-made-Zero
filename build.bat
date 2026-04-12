@@ -37,6 +37,8 @@ set defines=	      		-DHANDMADE_INTERNAL=1
 set defines=%defines% 		-DHANDMADE_SLOW=1
 
 :: No optimisations (slow)L -Od; all optimisations (fast): -O2
-cl -Od %compiler% %defines% %debug% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
+echo.
+cl -Od %compiler% %defines% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
+echo.
 cl -Od %compiler% -DHANDMADE_WIN32=1 %defines% %debug% -Fmwin32_handmade.map %code_path%win32_handmade.cpp %win32_libs% /link %link% -subsystem:windows,5.2 	&:: Windows platform code (win32_handmade.exe)
 popd
