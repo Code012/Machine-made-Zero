@@ -21,9 +21,38 @@ RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
 }
 
 internal void
+RenderPlayer(game_offscreen_buffer* Buffer, int PlayerX, int PlayerY)
+{
+    u8 *EndOfBuffer = (u8 *)Buffer->Memory + 
+                            Buffer->Pitch*Buffer->Height;
+    u32 Colour = 0xFFFFFFFF;
+    int Top = PlayerY;
+    int Bottom = PlayerY+10;
+    for (int X = PlayerX;
+         X < PlayerX+10;
+         ++X)
+    {
+        u8 *Pixel = (u8 *)Buffer->Memory + 
+                    (X * Buffer->BytesPerPixel) +
+                    (Top * Buffer->Pitch);
+
+        for (int Y = Top;
+                Y < Bottom;
+                ++Y)
+        {
+            if (Pixel >= Buffer->Memory && 
+                Pixel < EndOfBuffer)
+            {
+                *(u32 *)Pixel = Colour;
+                Pixel += Buffer->Pitch;
+            }
+        }
+    }
+}
+
+internal void
 GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, int ToneHz)
 {
-	local_persist f32 tSine;
 	s16 ToneVolume = 3000;
 	int WavePeriod = SoundBuffer->SamplesPerSecond / ToneHz;
 
@@ -32,8 +61,13 @@ GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, in
          SampleIndex < SoundBuffer->SampleCount;
          ++SampleIndex)
     {
+#if 0
+
         f32 SineValue = sinf(GameState->tSine);
         s16 SampleValue = (s16)(SineValue * ToneVolume);
+#else
+        s16 SampleValue = 0;
+#endif
         
         *SampleOut++ = SampleValue;
         *SampleOut++ = SampleValue;
@@ -71,6 +105,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->ToneHz = 512;
         GameState->tSine = 0.0f;
 
+        GameState->PlayerX = 100;
+        GameState->PlayerY = 100; 
+
         // TODO(casey): This may be more appropriate to do in the platform layer
         Memory->IsInitialised = true;
     }
@@ -89,16 +126,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         else
         {
             // NOTE(casey): Use digital movement tuning
-            if (Controller->MoveLeft.EndedDown)
-            {
-                GameState->XOffset -= 10;
-            }
-
-            if (Controller->MoveRight.EndedDown)
-            {
-                GameState->XOffset += 10;
-            }
-
             if (Controller->MoveUp.EndedDown)
             {
                 GameState->ToneHz += 10;
@@ -110,12 +137,22 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
 
+        GameState->PlayerX += (int)(4.0f * Controller->StickAverageX);
+        GameState->PlayerY += (int)(10.0f * sinf(2.0f * Pi32 * GameState->tJump));
+        if (GameState->tJump > 0)
+        {
+            GameState->PlayerY += (int)(10.0f * sinf(0.5f * Pi32 * GameState->tJump));
+        }
         if (Controller->ActionDown.EndedDown)
         {
-            GameState->YOffset += 10;
+            GameState->tJump = 4.0f;
         }
+        GameState->tJump -= 0.033f;
+
     }
+
 	RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);
+    RenderPlayer(Buffer, GameState->PlayerX, GameState->PlayerY);
 }
 #if defined __cplusplus
 extern "C"
