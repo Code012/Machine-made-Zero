@@ -47,7 +47,10 @@ struct win32_game_code
 {
     HMODULE GameCodeDLL;
     FILETIME DLLLastWriteTime;
+
     // Note(sb): Function pointers to exported functions from handmade.dll
+    // IMPORTANT(casey): Either of the callbacks can be 0!
+    // You must check before calling
     game_update_and_render *UpdateAndRender;
     game_get_sound_samples *GetSoundSamples;
 
@@ -59,6 +62,8 @@ struct win32_recorded_input
     int InputCount;
     game_input *InputStream;
 };
+
+#define WIN32_STATE_FILENAME_COUNT MAX_PATH
 struct win32_state
 {
     u64 TotalSize;
@@ -69,6 +74,9 @@ struct win32_state
 
     HANDLE PlaybackHandle;
     int InputPlayingIndex;
+
+    char EXEFilename[WIN32_STATE_FILENAME_COUNT];
+    char *OnePastLastEXEFilenameSlash;
 };
 
 #define WIN32_HANDMADE_H

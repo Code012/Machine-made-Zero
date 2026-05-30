@@ -6,7 +6,7 @@ set code_path=../code/
 :: GENERAL COMPILER FLAGS
 set compiler=               -nologo &:: Suppress Startup Banner
 set compiler=%compiler%     -Oi     &:: Use assembly intrinsics where possible
-set compiler=%compiler%     -MT     &:: Include CRT library in the executable (static link), Don't rely on the user having the correct CRT dll version
+set compiler=%compiler%     -MTd    &:: Include CRT library in the executable (static linking of the debug version), Don't rely on the user having the correct CRT dll version
 set compiler=%compiler%     -Gm-    &:: Disable minimal rebuild
 set compiler=%compiler%     -GR-    &:: Disable runtime type info (C++)
 set compiler=%compiler%     -EHa-   &:: Disable exception handling (C++)

@@ -138,7 +138,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
 
         GameState->PlayerX += (int)(4.0f * Controller->StickAverageX);
-        GameState->PlayerY += (int)(10.0f * sinf(2.0f * Pi32 * GameState->tJump));
+        GameState->PlayerY -= (int)(4.0f * Controller->StickAverageY);
         if (GameState->tJump > 0)
         {
             GameState->PlayerY += (int)(10.0f * sinf(0.5f * Pi32 * GameState->tJump));
