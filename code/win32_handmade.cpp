@@ -16,6 +16,8 @@
     - Hardware acceleration (OpenGL or Direct3D or both??)
     - GetKeyboard Layout (for french keyboards, international WASD support)
     
+Target 1920×1080 at 60Hz for the hardware renderer.
+Halve these values for our software renderer to 960×540 at 30Hz.
 
 
     Replay System
@@ -265,7 +267,7 @@ Win32LoadGameCode(char *SourceDLLName, char *TempDLLName)
 
     Result.DLLLastWriteTime = Win32GetLastWriteTime(SourceDLLName);
 
-    // Sleep(30);
+    //Sleep(30);  // bad hack, will be solved later episode
     CopyFile(SourceDLLName, TempDLLName, FALSE);
     Result.GameCodeDLL = LoadLibraryA(TempDLLName); 
     if (Result.GameCodeDLL)
@@ -1078,6 +1080,8 @@ WinMain(HINSTANCE Instance,
     UINT DesiredSchedulerMS = 1;
     b32 SleepIsGranular = (timeBeginPeriod(DesiredSchedulerMS) == TIMERR_NOERROR);
     Win32LoadXInput();
+    // Win32ResizeDIBSection(&GlobalBackBuffer, 1920, 1080);
+    Win32ResizeDIBSection(&GlobalBackBuffer, 960, 540);
     WNDCLASSA WindowClass = {};
     // TODO(casey): Check if HREDRAW/VREDRAW/OWNDC still matter
     WindowClass.style       = CS_HREDRAW | CS_VREDRAW;
@@ -1124,7 +1128,6 @@ WinMain(HINSTANCE Instance,
             SoundOutput.SafetyBytes = (int)(((f32)SoundOutput.SamplesPerSecond * (f32)SoundOutput.BytesPerSample)
                         / GameUpdateHz) / 3.0f;
 
-            // Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
             Win32InitDSound(Window, SoundOutput.SamplesPerSecond, SoundOutput.SecondaryBufferSize);
             Win32ClearBuffer(&SoundOutput);
             GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
@@ -1215,6 +1218,7 @@ WinMain(HINSTANCE Instance,
                 GlobalRunning = true;
                 while (GlobalRunning) // frame loop 
                 { 
+                    NewInput->SecondsToAdvanceOverUpdate = TargetSecondsPerFrame;
                     FILETIME NewDLLWriteTime = Win32GetLastWriteTime(SourceGameCodeDLLFullPath);
                     if ( CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime) != 0)
                     {

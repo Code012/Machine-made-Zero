@@ -20,33 +20,68 @@ RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
     }
 }
 
-internal void
-RenderPlayer(game_offscreen_buffer* Buffer, int PlayerX, int PlayerY)
+internal s32
+RoundReal32ToInt32(f32 Number)
 {
-    u8 *EndOfBuffer = (u8 *)Buffer->Memory + 
-                            Buffer->Pitch*Buffer->Height;
-    u32 Colour = 0xFFFFFFFF;
-    int Top = PlayerY;
-    int Bottom = PlayerY+10;
-    for (int X = PlayerX;
-         X < PlayerX+10;
-         ++X)
-    {
-        u8 *Pixel = (u8 *)Buffer->Memory + 
-                    (X * Buffer->BytesPerPixel) +
-                    (Top * Buffer->Pitch);
+    s32 Result = (s32)(Number + 0.5f);
+    return (Result);
+}
+internal void
+DrawRectangle(game_offscreen_buffer* Buffer, 
+                f32 RealMinX, f32 RealMinY, f32 RealMaxX, f32 RealMaxY,
+                u32 Color)
+{
+    // Round up float Min/Max positions to an integer
+    // Draw our rectangle from Min(x, y) up to and excluding Max(x, y)
 
-        for (int Y = Top;
-                Y < Bottom;
-                ++Y)
+    s32 MinX = RoundReal32ToInt32(RealMinX); 
+    s32 MinY = RoundReal32ToInt32(RealMinY); 
+    s32 MaxX = RoundReal32ToInt32(RealMaxX); 
+    s32 MaxY = RoundReal32ToInt32(RealMaxX);
+    // clipping
+    if (MinX < 0)
+    {
+        MinX = 0;
+    }
+
+    if (MinY < 0)
+    {
+        MinY = 0;
+    }
+
+    if (MaxX > Buffer->Width)
+    {
+        MaxX = Buffer->Width;
+    }
+
+    if (MaxY > Buffer->Height)
+    {
+        MaxY = Buffer->Height;
+    }
+    /*
+We want to position ourselves at (MinX, MinY) before we enter the loop as follows:
+
+- Since we want to offset one byte at a time for correct positioning, we define the row pointer as an 8-bit value
+- We start at the start of the buffer memory.
+- We then move “horizontally” by MinX amount of pixels, multiplied by the size of our pixels. We have saved this size as BytesPerPixel.
+- Finally, we move “vertically” by MinY pixels, multiplied by the stride or Pitch of our row.
+- We then advance our row by pitch until we fill the rectangle we need.
+    */
+    u8 *Row = ((u8 *)Buffer->Memory +
+                MinX * Buffer->BytesPerPixel + 
+                MinY * Buffer->Pitch);
+    for (int Y = MinY;  // row
+         Y < MaxY;
+         ++Y)
+    {
+        u32 *Pixel = (u32 *)Row;
+        for (int X = MinX;  // col
+                X < MaxX;
+                ++X)
         {
-            if (Pixel >= Buffer->Memory && 
-                Pixel < EndOfBuffer)
-            {
-                *(u32 *)Pixel = Colour;
-                Pixel += Buffer->Pitch;
-            }
+            *Pixel++ = Color;
         }
+        Row += Buffer->Pitch;
     }
 }
 
@@ -62,7 +97,6 @@ GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, in
          ++SampleIndex)
     {
 #if 0
-
         f32 SineValue = sinf(GameState->tSine);
         s16 SampleValue = (s16)(SineValue * ToneVolume);
 #else
@@ -71,12 +105,13 @@ GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, in
         
         *SampleOut++ = SampleValue;
         *SampleOut++ = SampleValue;
-        
+#if 0
         GameState->tSine += (2.0f * Pi32 * 1.0f) / (f32)WavePeriod;
         if (GameState->tSine > 2.0f * Pi32)
         {
             GameState->tSine -= 2.0f * Pi32;
         }
+#endif
     }
 }
 
@@ -92,22 +127,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (!Memory->IsInitialised)
     {
-        debug_read_file_result FileData = Memory->DEBUGPlatformReadEntireFile(Thread, __FILE__); 
-        if (FileData.Contents)
-        {
-            Memory->DEBUGPlatformWriteEntireFile(Thread, "test.out", FileData.ContentsSize, FileData.Contents);
-            Memory->DEBUGPlatformFreeFileMemory(Thread, FileData.Contents);
-            FileData.Contents = nullptr;
-        }
-
-        // GameState->XOffset = 0; 
-        // GameState->YOffset = 0;
-        GameState->ToneHz = 512;
-        GameState->tSine = 0.0f;
-
-        GameState->PlayerX = 100;
-        GameState->PlayerY = 100; 
-
         // TODO(casey): This may be more appropriate to do in the platform layer
         Memory->IsInitialised = true;
     }
@@ -120,50 +139,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         if (Controller->IsAnalog)
         {
             // NOTE(casey): Use analog movement tuning
-            GameState->XOffset += (int)(4.0f * Controller->StickAverageX);
-            GameState->ToneHz = 256 + (int)(128.0f * (Controller->StickAverageY));
         }
         else
         {
             // NOTE(casey): Use digital movement tuning
-            if (Controller->MoveUp.EndedDown)
-            {
-                GameState->ToneHz += 10;
-            }
-
-            if (Controller->MoveDown.EndedDown)
-            {
-                GameState->ToneHz -= 10;
-            }
         }
-
-        GameState->PlayerX += (int)(4.0f * Controller->StickAverageX);
-        GameState->PlayerY -= (int)(4.0f * Controller->StickAverageY);
-        if (GameState->tJump > 0)
-        {
-            GameState->PlayerY += (int)(10.0f * sinf(0.5f * Pi32 * GameState->tJump));
-        }
-        if (Controller->ActionDown.EndedDown)
-        {
-            GameState->tJump = 4.0f;
-        }
-        GameState->tJump -= 0.033f;
 
     }
 
-	RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);
-    RenderPlayer(Buffer, GameState->PlayerX, GameState->PlayerY);
-    for (int ButtonIndex = 0;
-        ButtonIndex < ArrayCount(Input->MouseButtons);
-        ++ButtonIndex)
-    {
-        if (Input->MouseButtons[ButtonIndex].EndedDown)
-        {
-            RenderPlayer(Buffer, 10 + 20 * ButtonIndex, 10);
-        }
-    }
-
-    RenderPlayer(Buffer, Input->MouseX, Input->MouseY);
+    DrawRectangle(Buffer, 0.0f, 0.0f, (f32)Buffer->Width, (f32)Buffer->Height, 0x00FF00FF);
+    DrawRectangle(Buffer, 10.0f, 10.0f, 30.0f, 30.0f, 0x0000FFFF);
 }
 #if defined __cplusplus
 extern "C"
@@ -171,5 +156,5 @@ extern "C"
 GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 {
     game_state *GameState = (game_state *)Memory->PermanentStorage;
-    GameOutputSound(GameState, SoundBuffer, GameState->ToneHz);
+    GameOutputSound(GameState, SoundBuffer, 400);
 }

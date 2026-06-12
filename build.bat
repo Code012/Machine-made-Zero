@@ -18,6 +18,7 @@ set compiler=%compiler%     -wd4100 &:: Unused function parameter
 set compiler=%compiler%     -wd4189 &:: Local variable not referenced
 set compiler=%compiler%     -wd4701 &:: Potentially uninitialized local variable 'name' used
 set compiler=%compiler%		-wd4244 &:: Conversion from 'X' to 'Y' possible loss of data
+set compiler=%compiler%		-wd4505 &:: Unreferenced function has been removed
 set compiler=%compiler%		
 :: DEBUG VARIABLES
 set debug=		  			-FC &:: Produce the full path of the source code file
@@ -39,7 +40,7 @@ set defines=%defines% 		-DHANDMADE_SLOW=1
 
 :: No optimisations (slow)L -Od; all optimisations (fast): -O2
 echo.
-cl -Od %compiler% %defines% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
+cl -Od %compiler% %defines% %debug% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
 echo.
-cl -Od %compiler% -DHANDMADE_WIN32=1 %defines% %debug% -Fmwin32_handmade.map %code_path%win32_handmade.cpp %win32_libs% /link %link% -subsystem:windows,5.2 	&:: Windows platform code (win32_handmade.exe)
+cl -Od %compiler% -DHANDMADE_WIN32=1 %defines% %debug% -Fmwin32_handmade.map %code_path%win32_handmade.cpp %win32_libs% /link %link%  -subsystem:windows,5.2 	&:: Windows platform code (win32_handmade.exe)
 popd
