@@ -803,14 +803,22 @@ Win32ProcessPendingMessages(win32_state *State, game_controller_input *KeyboardC
                 {
                     if (IsDown)
                     {
-                        if (State->InputRecordingIndex == 0)
+                        if (State->InputPlayingIndex == 0)
                         {
-                            Win32BeginRecordingInput(State, 1);
+
+                            if (State->InputRecordingIndex == 0)
+                            {
+                                Win32BeginRecordingInput(State, 1);
+                            }
+                            else
+                            {
+                                Win32EndRecordingInput(State);
+                                Win32BeginInputPlayback(State, 1);
+                            }
                         }
                         else
                         {
-                            Win32EndRecordingInput(State);
-                            Win32BeginInputPlayback(State, 1);
+                            Win32EndInputPlayback(State);
                         }
                     }
                 }
