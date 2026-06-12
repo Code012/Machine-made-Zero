@@ -17,6 +17,7 @@ set compiler=%compiler%     -wd4201 &:: Nameless struct/union
 set compiler=%compiler%     -wd4100 &:: Unused function parameter
 set compiler=%compiler%     -wd4189 &:: Local variable not referenced
 set compiler=%compiler%     -wd4701 &:: Potentially uninitialized local variable 'name' used
+set compiler=%compiler%		-wd4244 &:: Conversion from 'X' to 'Y' possible loss of data
 set compiler=%compiler%		
 :: DEBUG VARIABLES
 set debug=		  			-FC &:: Produce the full path of the source code file

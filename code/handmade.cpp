@@ -92,11 +92,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (!Memory->IsInitialised)
     {
-        debug_read_file_result FileData = Memory->DEBUGPlatformReadEntireFile(__FILE__); 
+        debug_read_file_result FileData = Memory->DEBUGPlatformReadEntireFile(Thread, __FILE__); 
         if (FileData.Contents)
         {
-            Memory->DEBUGPlatformWriteEntireFile("test.out", FileData.ContentsSize, FileData.Contents);
-            Memory->DEBUGPlatformFreeFileMemory(FileData.Contents);
+            Memory->DEBUGPlatformWriteEntireFile(Thread, "test.out", FileData.ContentsSize, FileData.Contents);
+            Memory->DEBUGPlatformFreeFileMemory(Thread, FileData.Contents);
             FileData.Contents = nullptr;
         }
 
@@ -153,6 +153,17 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 	RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);
     RenderPlayer(Buffer, GameState->PlayerX, GameState->PlayerY);
+    for (int ButtonIndex = 0;
+        ButtonIndex < ArrayCount(Input->MouseButtons);
+        ++ButtonIndex)
+    {
+        if (Input->MouseButtons[ButtonIndex].EndedDown)
+        {
+            RenderPlayer(Buffer, 10 + 20 * ButtonIndex, 10);
+        }
+    }
+
+    RenderPlayer(Buffer, Input->MouseX, Input->MouseY);
 }
 #if defined __cplusplus
 extern "C"

@@ -64,10 +64,31 @@ struct win32_recorded_input
 };
 
 #define WIN32_STATE_FILENAME_COUNT MAX_PATH
+struct win32_replay_buffer
+{
+    HANDLE FileHandle;
+    HANDLE MemoryMap;
+    char Filename[WIN32_STATE_FILENAME_COUNT];
+    
+    // Pointer to a memory-mapped file that stores a complete
+    // snapshot of the game's memory (permanent + transient).
+    //
+    // During recording:
+    //     GameMemory -> MemoryBlock
+    //
+    // During playback:
+    //     MemoryBlock -> GameMemory
+    //
+    // This is NOT the recorded input stream. The input stream
+    // is stored separately in loop_edit_X_input.hmi.
+    void *MemoryBlock;                      // data for file
+} ;
+
 struct win32_state
 {
     u64 TotalSize;
     void *GameMemoryBlock;
+    win32_replay_buffer ReplayBuffers[4];
 
     HANDLE RecordingHandle;
     int InputRecordingIndex;

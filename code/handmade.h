@@ -59,10 +59,14 @@ typedef double  f64;
 inline u32
 SafeTruncateUInt64(u64 Value)
 {
-    Assert(Value <= 0xFFFFFFFF);
+    Assert(Value <= 0xFFFFFFFF);    // less than u32 MAX
     u32 Result = (u32)Value;
     return Result;
 }
+struct thread_context   // Note(sb): current thread context, i.e. what thread you're in when you're running multi-threaded. Pass to any function speaking with the platform layer (so all functions currently listed in handmade.h)
+{
+    int Placeholder;
+};
 
 // TODO(casey): Services that the platform layer provides to the game.
 #if HANDMADE_INTERNAL
@@ -71,13 +75,13 @@ struct debug_read_file_result
     u32 ContentsSize;
     void *Contents;
 };
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (void *Memory)
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (thread_context *Thread, void *Memory)
 typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
 
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (char *Filename)
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (thread_context *Thread, char *Filename)
 typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
 
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) b32 name (char *Filename, u32 MemorySize, void *Memory)
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) b32 name (thread_context *Thread, char *Filename, u32 MemorySize, void *Memory)
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 #endif
@@ -101,8 +105,8 @@ struct game_sound_output_buffer // sound is tricky to understand, i gave up unde
 // stores the information on each individual button
 struct game_button_state
 {
-    s32 HalfTransitionCount;
-    b32 EndedDown;
+    s32 HalfTransitionCount;    // How many times button went from down->up, up->down. A button click is 2.
+    b32 EndedDown;              // based on this information you can reconstruct how many times key was pressed/released/clicked and you know whether it is currently down or not 
 };
 
 // stores all the information on each controller that we care about
@@ -146,6 +150,9 @@ struct game_controller_input
 // stores multiple controllers
 struct game_input
 {
+    game_button_state MouseButtons[5];
+    s32 MouseX, MouseY, MouseZ;     // Z represents scroll-wheel
+
     game_controller_input Controllers[5];
 };
 
@@ -174,13 +181,13 @@ struct game_memory
 
 
 // NOTE(casey): Services that the game provides to the platform layer
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer)
+#define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread, game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 // NOTE(casey): At the moment, this has to be a very fast function, it cannot be
 // more than a millisecond or so.
 // TODO(casey): Reduce the pressure on this function's performance by measuring it
 // or asking about it, etc.
-#define GAME_GET_SOUND_SAMPLES(name) void name(game_memory *Memory, game_sound_output_buffer *SoundBuffer)
+#define GAME_GET_SOUND_SAMPLES(name) void name(thread_context *Thread, game_memory *Memory, game_sound_output_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
 
