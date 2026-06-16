@@ -47,6 +47,7 @@ Halve these values for our software renderer to 960×540 at 30Hz.
 
 */
 #include "handmade.h"
+#include "handmade_platform.h"
 
 #include <windows.h>
 #include <stdio.h>
@@ -484,17 +485,43 @@ Win32DisplayBufferInWindow(win32_offscreen_buffer* Buffer,
                            int                     WindowWidth,
                            int                     WindowHeight)
 {
+    int OffsetX = 10;
+    int OffsetY = 10;
+
+    PatBlt(DeviceContext, 0, 0, WindowWidth, OffsetY, BLACKNESS);                             // top
+    // PatBlt(DeviceContext, 0, OffsetY + Buffer->Height, WindowWidth, WindowHeight, BLACKNESS); // bottom
+    PatBlt(DeviceContext, 0, OffsetY + Buffer->Height, WindowWidth, WindowHeight - (OffsetY + Buffer->Height), BLACKNESS);
+
+    PatBlt(DeviceContext, 0, 0, OffsetX, WindowHeight, BLACKNESS);                            // left
+    // PatBlt(DeviceContext, OffsetX + Buffer->Width, 0, WindowWidth, WindowHeight, BLACKNESS);  // right
+    PatBlt(DeviceContext, OffsetX + Buffer->Width, 0, WindowWidth - (OffsetX + Buffer->Width), WindowHeight, BLACKNESS);
+
+
+
     // TODO(casey): Aspect ratio correction
     // NOTE(casey): For prototyping purposes, we're going to always blit
     // 1-1 pixels to make sure we don't introduce artifacts with 
     // stretching while we are learning to code the renderer!
     StretchDIBits(DeviceContext,
-                  0, 0, Buffer->Width, Buffer->Height,      // destination rectangle (window)
+                  OffsetX, OffsetY, Buffer->Width, Buffer->Height,      // destination rectangle (window)
                   0, 0, Buffer->Width, Buffer->Height,  // source rectangle (bitmap buffer)
                   Buffer->Memory,
                   &Buffer->Info,
                   DIB_RGB_COLORS,
                   SRCCOPY);
+
+    char buffer[256];
+    wsprintfA(buffer,
+    "Window %d x %d\n"
+    "Buffer %d x %d\n"
+    "Right edge %d\n"
+    "Bottom edge %d\n",
+    WindowWidth, WindowHeight,
+    Buffer->Width, Buffer->Height,
+    OffsetX + Buffer->Width,
+    OffsetY + Buffer->Height);
+
+    OutputDebugStringA(buffer);
 }
 
 internal void
@@ -914,9 +941,7 @@ Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
             // When the user changes the size of the window
         case WM_SIZE: 
             {
-            win32_window_dimension Dimension = Win32GetWindowDimension(Window);
-            Win32ResizeDIBSection(
-              &GlobalBackBuffer, Dimension.Width, Dimension.Height);
+                OutputDebugStringA("WM_SIZE\n");
             } break;
 
         default: 
@@ -1090,7 +1115,11 @@ WinMain(HINSTANCE Instance,
     // WindowClass.hIcon
     WindowClass.lpszClassName = "HandmadeHeroClass";
 
-    
+    RECT WndRect = {0, 0, 960, 540};
+    AdjustWindowRectEx(&WndRect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, FALSE, 0);
+    int WindowWidth = WndRect.right - WndRect.left;
+    int WindowHeight = WndRect.bottom - WndRect.top;    
+
     if (RegisterClassA(&WindowClass)) 
     {
         HWND Window = CreateWindowExA(0, // WS_EX_TOPMOST | WS_EX_LAYERED,
@@ -1099,12 +1128,13 @@ WinMain(HINSTANCE Instance,
                                       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                       CW_USEDEFAULT,
                                       CW_USEDEFAULT,
-                                      CW_USEDEFAULT,
-                                      CW_USEDEFAULT,
+                                      WindowWidth,
+                                      WindowHeight,
                                       0,
                                       0,
                                       Instance,
                                       0);
+        
         if (Window) 
         {
             int MonitorRefreshHz = 60;
@@ -1151,7 +1181,7 @@ WinMain(HINSTANCE Instance,
             // TODO(casey): Use MEM_LARGE_PAGES and call adjust token
             // privileges when not on Windows XP?
             Win32State.TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
-            Win32State.GameMemoryBlock = VirtualAlloc(BaseAddress, (size_t)Win32State.TotalSize,
+            Win32State.GameMemoryBlock = VirtualAlloc(BaseAddress, (size_t)Win32State.TotalSize,    // platform layer owns memory, but game layer modifies it (exception of playback system that loads saved game memory into this)
                                                         MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             GameMemory.PermanentStorage = Win32State.GameMemoryBlock;
             GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage + 
@@ -1218,7 +1248,7 @@ WinMain(HINSTANCE Instance,
                 GlobalRunning = true;
                 while (GlobalRunning) // frame loop 
                 { 
-                    NewInput->SecondsToAdvanceOverUpdate = TargetSecondsPerFrame;
+                    NewInput->dtForFrame = TargetSecondsPerFrame;
                     FILETIME NewDLLWriteTime = Win32GetLastWriteTime(SourceGameCodeDLLFullPath);
                     if ( CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime) != 0)
                     {
