@@ -1,6 +1,7 @@
 /*  date = November 15th 2025 07:21 PM */
 
 #include "handmade.h"
+#include "handmade_intrinsics.h"
 
 internal void
 RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
@@ -18,33 +19,6 @@ RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
         }
         Row += Buffer->Pitch;
     }
-}
-
-inline s32
-RoundReal32ToInt32(f32 Number)
-{
-    s32 Result = (s32)(Number + 0.5f);
-    return (Result);
-}
-inline u32
-RoundReal32ToUInt32(f32 Number)
-{
-    u32 Result = (u32)(Number + 0.5f);
-    return (Result);
-}
-// TODO(casey): HOW TO IMPLEMENT THESE MATH FUNCITONS!!!
-#include "math.h"
-inline s32
-FloorReal32ToInt32(f32 Number)
-{
-    s32 Result = (s32)floorf(Number);
-    return (Result);
-}
-inline s32
-TruncateReal32ToInt32(f32 Number)
-{
-    s32 Result = (s32)Number;
-    return (Result);
 }
 
 internal void
@@ -194,16 +168,16 @@ GetCanonicalPosition(world *World, raw_position Pos)
     
     f32 X = Pos.X - World->UpperLeftX; // relative to tilemap origin
     f32 Y = Pos.Y - World->UpperLeftY;
-    Result.TileX = FloorReal32ToInt32((X) / World->TileWidth);  
-    Result.TileY = FloorReal32ToInt32((Y) / World->TileHeight);
+    Result.TileX = FloorReal32ToInt32((X) / World->TileSideInPixels);  
+    Result.TileY = FloorReal32ToInt32((Y) / World->TileSideInPixels);
     
-    Result.X = X - Result.TileX*World->TileWidth;   // relative to tile map
-    Result.Y = Y - Result.TileY*World->TileHeight;
+    Result.TileRelX = X - Result.TileX*World->TileSideInPixels;   // relative to tile map
+    Result.TileRelY = Y - Result.TileY*World->TileSideInPixels;
 
-    Assert(Result.X >= 0);
-    Assert(Result.Y >= 0);
-    Assert(Result.X < World->TileWidth);
-    Assert(Result.Y < World->TileHeight);
+    Assert(Result.TileRelX >= 0);
+    Assert(Result.TileRelY >= 0);
+    Assert(Result.TileRelX < World->TileSideInPixels);
+    Assert(Result.TileRelY < World->TileSideInPixels);
 
     // map player point onto other tilemaps if it goes out of bounds of current tilemap
     if (Result.TileX < 0) // going to left tilemap
@@ -319,14 +293,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     World.TileMapCountY = 2;
     World.CountX = TILE_MAP_COUNT_X;
     World.CountY = TILE_MAP_COUNT_Y;
-    World.UpperLeftX = -30;
-    World.UpperLeftY = 0;
-    World.TileWidth  = 60;
-    World.TileHeight = 60;
 
-    
-    f32 PlayerWidth  = 0.75 * World.TileWidth;
-    f32 PlayerHeight = World.TileHeight;
+    //TODO(casey): Begin using tile side in meters
+    World.TileSideInMeters = 1.4f;
+    World.TileSideInPixels = 60;
+
+    World.UpperLeftX = -(f32)World.TileSideInPixels/2;
+    World.UpperLeftY = 0;
+
+    f32 PlayerWidth  = 0.75 * World.TileSideInPixels;
+    f32 PlayerHeight = (f32)World.TileSideInPixels;
 
     World.TileMaps = (tile_map *)TileMaps;
 
@@ -388,8 +364,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 GameState->PlayerTileMapX = CanPos.TileMapX;
                 GameState->PlayerTileMapY = CanPos.TileMapY;
 
-                GameState->PlayerX = World.UpperLeftX + World.TileWidth*CanPos.TileX + CanPos.X;
-                GameState->PlayerY = World.UpperLeftY + World.TileHeight*CanPos.TileY + CanPos.Y;
+                GameState->PlayerX = World.UpperLeftX + World.TileSideInPixels*CanPos.TileX + CanPos.TileRelX;
+                GameState->PlayerY = World.UpperLeftY + World.TileSideInPixels*CanPos.TileY + CanPos.TileRelY;
             }
         }
 
@@ -416,10 +392,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 Gray = 1.0f;
             }
 
-            f32 MinX = World.UpperLeftX + ((f32)Column) * World.TileWidth;
-            f32 MinY = World.UpperLeftY + ((f32)Row) * World.TileHeight;
-            f32 MaxX = MinX + World.TileWidth;
-            f32 MaxY = MinY + World.TileHeight;
+            f32 MinX = World.UpperLeftX + ((f32)Column) * World.TileSideInPixels;
+            f32 MinY = World.UpperLeftY + ((f32)Row) * World.TileSideInPixels;
+            f32 MaxX = MinX + World.TileSideInPixels;
+            f32 MaxY = MinY + World.TileSideInPixels;
 
             DrawRectangle(Buffer, MinX, MinY, MaxX, MaxY, Gray, Gray, Gray);
         }

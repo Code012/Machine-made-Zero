@@ -17,16 +17,30 @@ HANDMADE_SLOW:
 
 struct canonical_position
 {
+    /* TODO(casey):
+
+        Take the tile map x and y
+        and the tile x and y
+
+        and pack them into sinle 32-bit values for x and y
+        where there is some low bits for the tile index
+        and the the high bits are the tile "page"
+    */
+
     s32 TileMapX; 
     s32 TileMapY; 
 
     s32 TileX;
     s32 TileY;
 
-    // NOTE(casey): This is tile-relative X and Y
-    // TODO(casey): These are still in pixels.... :/
-    f32 X; 
-    f32 Y;
+    /*  TODO(casey):
+
+        Convert these to math=friendly, resolution independent representation of
+        world units relative to a tile.
+        
+    */
+    f32 TileRelX; 
+    f32 TileRelY;
 };
 
 // TODO(casey): Is this ever necessary?
@@ -46,13 +60,14 @@ struct tile_map
 }; 
 struct world
 {
+    f32 TileSideInMeters;
+    s32 TileSideInPixels;
+
     s32 CountX; // number of columns
     s32 CountY; // number of rows
 
     f32 UpperLeftX;
     f32 UpperLeftY;
-    f32 TileWidth;
-    f32 TileHeight;
 
     // TODO(casey): Beginner's sparseness
     s32 TileMapCountX;

@@ -39,6 +39,7 @@ set defines=	      		-DHANDMADE_INTERNAL=1
 set defines=%defines% 		-DHANDMADE_SLOW=1
 
 :: No optimisations (slow)L -Od; all optimisations (fast): -O2
+REM Optimisation switches /O2 /Oi /fp:fast
 echo.
 cl -Od %compiler% %defines% %debug% -Fmhandmade.map %code_path%handmade.cpp -LD /link %link% %dll_link%															&:: Cross-platform game code (handmade.dll)
 echo.
