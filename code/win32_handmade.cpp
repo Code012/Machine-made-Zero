@@ -1180,6 +1180,9 @@ WinMain(HINSTANCE Instance,
 
             // TODO(casey): Use MEM_LARGE_PAGES and call adjust token
             // privileges when not on Windows XP?
+            // TODO(casey): TransientStorage needs to be broken up 
+            // into game transient and cache transient, and only
+            // the former needs be saved for state playback.
             Win32State.TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
             Win32State.GameMemoryBlock = VirtualAlloc(BaseAddress, (size_t)Win32State.TotalSize,    // platform layer owns memory, but game layer modifies it (exception of playback system that loads saved game memory into this)
                                                         MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
