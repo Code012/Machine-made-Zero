@@ -1,7 +1,9 @@
-:: don't display all the lines as they are gettinf executed. @ symbol means that this line is included (so that your script won't print "echo off", either
 @echo off
 
-:: call command required to call a batch file from another batch file
-call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
-set path=D:\Coding\handmade-hero\misc;%path%
-cls
+REM
+REM  To run this at startup, use this as your shortcut target:
+REM  %windir%\system32\cmd.exe /k w:\handmade\misc\shell.bat
+REM
+
+call "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" x64
+set path=w:\handmade\misc;%path%
